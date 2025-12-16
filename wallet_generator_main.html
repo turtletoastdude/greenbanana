@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Secure Offline Wallet Generator</title>
+  <style>
+    body { background: #111; color: #0f0; font-family: monospace; padding: 20px; text-align: center; }
+    .section { border: 1px solid #0f0; margin: 20px auto; padding: 20px; width: 90%; max-width: 700px; }
+    canvas { background: #000; border: 1px solid #0f0; }
+    button, textarea, select, input { background: #222; color: #0f0; border: 1px solid #0f0; padding: 8px 12px; margin: 10px auto; display: block; width: 80%; }
+    button.copy-btn { width: auto; display: inline-block; margin: 5px; padding: 4px 8px; font-size: 0.9em; }
+    h1, h2 { color: #0f0; }
+    .qr-container { display: flex; justify-content: center; gap: 40px; }
+    .qr-container img, .qr-container canvas { display: block; }
+  </style>
+  <!-- PSBT & multisig require bitcoinjs-lib -->
+  <script src="lib/bitcoinjs-lib.min.js"></script>
+</head>
+<body>
+  <h1>🛡️ Secure Offline Wallet Generator</h1>
+
+  <!-- Step 1: Entropy -->
+  <div class="section">
+    <h2>Step 1: Generate Entropy</h2>
+    <canvas id="entropyCanvas" width="500" height="200"></canvas>
+    <p>Click to start/stop collecting. Move your mouse while collecting.</p>
+    <p>Entropy events: <strong><span id="evtCount">0</span></strong></p>
+    <textarea id="entropyOut" rows="4" readonly placeholder="Raw entropy log"></textarea>
+    <button class="copy-btn" onclick="copyToClipboard('entropyOut')">📋 Copy Entropy</button>
+  </div>
+
+  <!-- Step 2: Mnemonic -->
+  <div class="section">
+    <h2>Step 2: Generate Mnemonic</h2>
+    <button id="genMnemonicBtn" onclick="generateMnemonic()" disabled>🔁 Generate Mnemonic</button>
+    <textarea id="mnemonic" rows="3" readonly placeholder="Your 12-word phrase"></textarea>
+    <button class="copy-btn" onclick="copyToClipboard('mnemonic')">📋 Copy Mnemonic</button>
+  </div>
+
+  <!-- Step 3: Keys & QR -->
+  <div class="section">
+    <h2>Step 3: Generate Keys</h2>
+    <label for="coinSelect">Choose Coin:</label>
+    <select id="coinSelect">
+      <option value="btc">Bitcoin</option>
+      <option value="doge">Dogecoin</option>
+    </select>
+    <button onclick="generateKeys()">🔑 Generate Keys</button>
+    <textarea id="publicKey" rows="2" readonly placeholder="Address"></textarea>
+    <button class="copy-btn" onclick="copyToClipboard('publicKey')">📋 Copy Address</button>
+    <textarea id="privateKey" rows="2" readonly placeholder="Private Key (WIF)"></textarea>
+    <button class="copy-btn" onclick="copyToClipboard('privateKey')">📋 Copy Private Key</button>
+    <div class="qr-container" id="qrDisplay"></div>
+    <button onclick="launchOverlay()">🖼️ Design & Print Paper Wallet</button>
+  </div>
+
+  <!-- Step 4: Sweep Funds via PSBT -->
+  <div class="section">
+    <h2>Step 4: Sweep Funds</h2>
+    <p>Paste your UTXO list JSON and destination address:</p>
+    <textarea id="utxoJson" rows="4" placeholder='[{"txid":"...","vout":0,"rawTxHex":"..."}]'></textarea>
+    <input type="text" id="sweepDest" placeholder="Destination Address"/>
+    <input type="number" id="feeRate" placeholder="Fee Rate (sat/B)" value="1"/>
+    <button onclick="buildSweep()">🧹 Build Sweep PSBT</button>
+    <textarea id="sweepPsbt" rows="4" readonly placeholder="Unsigned PSBT Base64"></textarea>
+    <button class="copy-btn" onclick="copyToClipboard('sweepPsbt')">📋 Copy PSBT</button>
+    <button onclick="signSweep()">🔏 Sign Sweep PSBT</button>
+    <textarea id="signedPsbt" rows="4" readonly placeholder="Signed PSBT Base64"></textarea>
+    <button class="copy-btn" onclick="copyToClipboard('signedPsbt')">📋 Copy Signed PSBT</button>
+  </div>
+
+  <!-- Dependencies -->
+  <script src="lib/crypto-js.min.js"></script>
+  <script src="lib/base.umd.js"></script>
+  <script src="lib/bip39.browser.js"></script>
+  <script src="lib/bip32.umd.js"></script>
+  <script src="lib/qrcode.min.js"></script>
+  <script src="lib/qr_overlay_ui.js"></script>
+
+  <script>
+    // Clipboard helper
+    function copyToClipboard(id) {
+      navigator.clipboard.writeText(document.getElementById(id).value)
+        .then(()=>alert('Copied!'))
+        .catch(()=>alert('Copy failed'));
+    }
+
+    // Entropy collection
+    const MIN_EVENTS = 512;
+    let entropy = [], collecting = false, startTime;
+    const canvas = document.getElementById('entropyCanvas'), ctx = canvas.getContext('2d');
+    const evtCountEl = document.getElementById('evtCount'), outRaw = document.getElementById('entropyOut');
+    const genMnemonic = document.getElementById('genMnemonicBtn');
+    canvas.addEventListener('click', () => {
+      collecting = !collecting;
+      if (collecting) { entropy=[]; ctx.clearRect(0,0,canvas.width,canvas.height); evtCountEl.textContent='0'; startTime=Date.now(); genMnemonic.disabled=true; }
+      else { outRaw.value=JSON.stringify(entropy,null,2); genMnemonic.disabled=false; }
+    });
+    canvas.addEventListener('mousemove', e => {
+      if (!collecting) return;
+      entropy.push({x:e.offsetX,y:e.offsetY,t:Date.now()});
+      ctx.fillStyle='#0f0'; ctx.fillRect(e.offsetX,e.offsetY,2,2);
+      evtCountEl.textContent=entropy.length;
+    });
+
+    // CryptoJS hash fns
+    function sha256Sync(bs) { const wa=CryptoJS.lib.WordArray.create(bs); return Uint8Array.from(CryptoJS.SHA256(wa).toString(CryptoJS.enc.Hex).match(/.{2}/g),hex=>parseInt(hex,16)); }
+    function ripemd160Sync(bs) { const wa=CryptoJS.lib.WordArray.create(bs); return Uint8Array.from(CryptoJS.RIPEMD160(wa).toString(CryptoJS.enc.Hex).match(/.{2}/g),hex=>parseInt(hex,16)); }
+
+    // UMD globals
+    const bip39 = window.bip39, { createBase58check }=window.scureBase, { HDKey }=window.scureBip32;
+
+    // Step 2: Mnemonic
+    async function generateMnemonic() {
+      const raw = new TextEncoder().encode(JSON.stringify(entropy));
+      const rnd = new Uint8Array(16); crypto.getRandomValues(rnd);
+      const combo = new Uint8Array(raw.length+rnd.length); combo.set(raw); combo.set(rnd,raw.length);
+      const hash = await crypto.subtle.digest('SHA-256', combo);
+      const bytes = new Uint8Array(hash).slice(0,16);
+      document.getElementById('mnemonic').value = bip39.entropyToMnemonic(bytes);
+    }
+
+    // Step 3: Keys & QR
+    function generateKeys() {
+      const coin=document.getElementById('coinSelect').value;
+      const phrase=document.getElementById('mnemonic').value;
+      const seed=bip39.mnemonicToSeedSync(phrase,'');
+      const root=HDKey.fromMasterSeed(seed);
+      const child=root.derive(coin==='doge'?"m/44'/3'/0'/0/0":"m/44'/0'/0'/0/0");
+      const pub=child.publicKey, h160=ripemd160Sync(sha256Sync(pub));
+      const ver=coin==='doge'?0x1e:0x00;
+      const b58=createBase58check(d=>sha256Sync(sha256Sync(d)));
+      const addr=b58.encode(Uint8Array.of(ver,...h160));
+      const priv=child.privateKey, wifVer=coin==='doge'?0x9e:0x80;
+      const wif=b58.encode(Uint8Array.of(wifVer,...priv));
+      document.getElementById('publicKey').value=addr;
+      document.getElementById('privateKey').value=wif;
+      const qrC=document.getElementById('qrDisplay'); qrC.innerHTML=''; new QRCode(qrC,addr); new QRCode(qrC,wif);
+    }
+
+    // Step 4: Sweep via PSBT
+    async function buildSweep() {
+      const utxos=JSON.parse(document.getElementById('utxoJson').value||'[]');
+      const dest=document.getElementById('sweepDest').value;
+      const feeRate=+document.getElementById('feeRate').value;
+      const psbt=new bitcoinjs.Psbt({network:bitcoinjs.networks.bitcoin});
+      let inputSum=0;
+      for(const u of utxos){
+        psbt.addInput({hash:u.txid,index:u.vout,nonWitnessUtxo:Buffer.from(u.rawTxHex,'hex')});
+        const tx=bitcoinjs.Transaction.fromHex(u.rawTxHex);
+        inputSum+=tx.outs[u.vout].value;
+      }
+      const estimatedSize=utxos.length*150+2*34+10;
+      const fee=estimatedSize*feeRate;
+      const sweepValue=inputSum-fee;
+      if(sweepValue<=0) return alert('Insufficient funds');
+      psbt.addOutput({address:dest,value:sweepValue});
+      document.getElementById('sweepPsbt').value=psbt.toBase64();
+    }
+    function signSweep() {
+      const base64=document.getElementById('sweepPsbt').value;
+      const keyPhrase=document.getElementById('mnemonic').value;
+      const seed=bip39.mnemonicToSeedSync(keyPhrase,'');
+      const root=HDKey.fromMasterSeed(seed);
+      const keyPair=bitcoinjs.ECPair.fromPrivateKey(Buffer.from(root.derive("m/44'/0'/0'/0/0").privateKey));
+      const psbt=bitcoinjs.Psbt.fromBase64(base64,{network:bitcoinjs.networks.bitcoin});
+      psbt.signAllInputs(keyPair); psbt.finalizeAllInputs();
+      document.getElementById('signedPsbt').value=psbt.toBase64();
+    }
+  </script>
+</body>
+</html>
