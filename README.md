@@ -62,6 +62,9 @@ This will regenerate `node_modules/` exactly as intended.
 
 After installation, the project can be run **fully offline**.
 
+This is how your final stack should look like:
+<img width="261" height="260" alt="image" src="https://github.com/user-attachments/assets/0f400ff0-7cdc-4e83-8fe0-254ab930eb50" />
+
 ---
 
 ## How to Use
@@ -97,5 +100,3 @@ GreenBanana prioritizes **clarity, control, and reproducibility** over convenien
 
 This software is provided as‑is.  
 You are responsible for verifying outputs and practicing proper operational security.
-
-<img width="261" height="260" alt="image" src="https://github.com/user-attachments/assets/0f400ff0-7cdc-4e83-8fe0-254ab930eb50" />
