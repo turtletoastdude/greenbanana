@@ -27,7 +27,8 @@ No secrets are stored remotely.
 .
 ├── images/              # Paper wallet templates
 ├── lib/                 # Local crypto + QR libraries
-├── output/              # Generated files (DO NOT COMMIT)
+├── node_modules         # Has "package.json" and "package-lock.json" to recreate 
+├── output/              # Generated files (should be empty to start)
 ├── package.json
 ├── package-lock.json
 └── wallet_generator_main
