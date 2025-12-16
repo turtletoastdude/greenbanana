@@ -101,3 +101,12 @@ GreenBanana prioritizes **clarity, control, and reproducibility** over convenien
 
 This software is provided as‑is.  
 You are responsible for verifying outputs and practicing proper operational security.
+
+Usage Screen Shots:
+<img width="950" height="729" alt="Screenshot 2025-12-16 010817" src="https://github.com/user-attachments/assets/a0e8fb25-8023-43ae-b8b0-8ed52fd042d4" />
+<img width="968" height="724" alt="Screenshot 2025-12-16 010846" src="https://github.com/user-attachments/assets/9604c4a9-35f1-42cf-a487-77e150b9fbb6" />
+<img width="966" height="907" alt="Screenshot 2025-12-16 010859" src="https://github.com/user-attachments/assets/3d91a49a-7e7a-498d-a80f-071ae343a026" />
+<img width="973" height="783" alt="Screenshot 2025-12-16 010920" src="https://github.com/user-attachments/assets/84aab48f-eea4-485a-b48a-8de43cf81791" />
+<img width="981" height="834" alt="Screenshot 2025-12-16 010931" src="https://github.com/user-attachments/assets/db7273a0-7c0f-4207-ab50-798794092921" />
+<img width="968" height="901" alt="Screenshot 2025-12-16 010942" src="https://github.com/user-attachments/assets/99fd3979-1c4c-491c-bd1a-01a25a8a0ea0" />
+
